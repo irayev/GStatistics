@@ -94,9 +94,30 @@ extern "C" {
 	__declspec(dllexport) void __stdcall SetEventCallback(EventCallback callback);
 
 
-	//--- Функции для работы с событиями ---
+	//-----------------------------------------------------------------------------
+	// Функции для работы с событиями
+	//-----------------------------------------------------------------------------
+
+	/**
+	* @brief Возвращает количество событий, ожидающих обработки в очереди событий
+	* @return Количество событий в очереди
+	*/
 	__declspec(dllexport) int __stdcall GetPendingEventCount();
+	
+	/**
+	 * @brief Извлекает следующее событие из очереди событий
+	 * @param eventType Буфер для записи типа события (UTF-16)
+	 * @param typeSize Размер буфера для типа события
+	 * @param eventData Буфер для записи данных события (UTF-16)
+	 * @param dataSize Размер буфера для данных события
+	 * @return 1 если событие успешно извлечено, 0 если очередь пуста
+	 */
 	__declspec(dllexport) int __stdcall GetNextEvent(wchar_t* eventType, int typeSize, wchar_t* eventData, int dataSize);
+
+	/**
+	 * @brief Очищает всю очередь событий
+	 * @return 1 при успешной очистке
+	 */
 	__declspec(dllexport) int __stdcall ClearEvents();
 
 #ifdef __cplusplus
