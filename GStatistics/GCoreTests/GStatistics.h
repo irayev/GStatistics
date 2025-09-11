@@ -1,10 +1,25 @@
-#pragma once
+#ifndef GSTATISTICS_H
+#define GSTATISTICS_H
 
-#ifdef GSTATISTICS_EXPORTS
-#define GST_API extern "C" __declspec(dllexport)
-#else
-#define GST_API extern "C" __declspec(dllimport)
+#ifdef __cplusplus
+extern "C" {
 #endif
 
-// Экспортируемая функция
-GST_API int __stdcall SendHttpRequest(const wchar_t* serverUrl, const wchar_t* jsonBody);
+	// Основные функции отправки
+	__declspec(dllimport) int __stdcall SendHttpRequest(const wchar_t* serverUrl, const wchar_t* jsonBody);
+	__declspec(dllimport) const wchar_t* __stdcall SendHttpRequestResponse(const wchar_t* serverUrl, const wchar_t* jsonBody);
+
+	// Функции работы с очередью
+	__declspec(dllimport) int __stdcall SendHttpRequestQueue(const wchar_t* serverUrl, const wchar_t* jsonBody, bool expectResponse);
+	__declspec(dllimport) int __stdcall ProcessHttpQueue();
+	__declspec(dllimport) const wchar_t* __stdcall GetHttpResponse(const wchar_t* serverUrl, const wchar_t* jsonBody);
+
+	// Функции управления базой
+	__declspec(dllimport) int __stdcall CleanOldHttpItems(int hoursOld, bool cleanResponses);
+	__declspec(dllimport) int __stdcall GetOldHttpItemsCount(int hoursOld, bool checkResponses);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // GSTATISTICS_H
