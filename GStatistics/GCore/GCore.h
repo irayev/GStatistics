@@ -29,6 +29,27 @@ extern "C" {
 	 */
 	__declspec(dllexport) const wchar_t* __stdcall SendHttpRequestResponse(const wchar_t* serverUrl, const wchar_t* jsonBody);
 
+	/**
+	 * @brief Расширенная версия: Отправляет HTTP POST запрос без ожидания ответа
+	 * @param serverUrl URL сервера (UTF-16)
+	 * @param jsonBody JSON тело запроса (UTF-16)
+	 * @param useSendEvent Управлять отправкой события через EventManager
+	 * @param useQueueEvent Управлять добавлением события в очередь
+	 * @return 0 при успехе, 1 при ошибке
+	 */
+	__declspec(dllexport) int __stdcall SendHttpRequestEx(const wchar_t* serverUrl, const wchar_t* jsonBody, bool useSendEvent, bool useQueueEvent);
+
+	/**
+	 * @brief Расширенная версия: Отправляет HTTP POST запрос и возвращает ответ сервера
+	 * @param serverUrl URL сервера (UTF-16)
+	 * @param jsonBody JSON тело запроса (UTF-16)
+	 * @param useSendEvent Управлять отправкой события через EventManager
+	 * @param useQueueEvent Управлять добавлением события в очередь
+	 * @return Ответ сервера в виде строки (UTF-16) или сообщение об ошибке
+	 */
+	__declspec(dllexport) const wchar_t* __stdcall SendHttpRequestResponseEx(const wchar_t* serverUrl, const wchar_t* jsonBody, bool useSendEvent, bool useQueueEvent);
+
+
 	//-----------------------------------------------------------------------------
 	// Функции работы с очередью запросов
 	//-----------------------------------------------------------------------------
@@ -56,6 +77,36 @@ extern "C" {
 	 */
 	__declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(const wchar_t* serverUrl, const wchar_t* jsonBody);
 
+	/**
+	 * @brief Расширенная версия: Добавляет запрос в очередь для последующей отправки
+	 * @param serverUrl URL сервера (UTF-16)
+	 * @param jsonBody JSON тело запроса (UTF-16)
+	 * @param expectResponse Флаг ожидания ответа
+	 * @param useSendEvent Управлять отправкой события через EventManager
+	 * @param useQueueEvent Управлять добавлением события в очередь
+	 * @return 0 при успехе, 1 при ошибке
+	 */
+	__declspec(dllexport) int __stdcall SendHttpRequestQueueEx(const wchar_t* serverUrl, const wchar_t* jsonBody, bool expectResponse, bool useSendEvent, bool useQueueEvent);
+
+	/**
+	 * @brief Расширенная версия: Запускает фоновую обработку очереди запросов
+	 * @param useSendEvent Управлять отправкой события через EventManager
+	 * @param useQueueEvent Управлять добавлением события в очередь
+	 * @return 0 при успешном запуске потока, 1 при ошибке
+	 */
+	__declspec(dllexport) int __stdcall ProcessHttpQueueEx(bool useSendEvent, bool useQueueEvent);
+
+	/**
+	 * @brief Расширенная версия: Получает ответ из базы данных и удаляет соответствующие записи
+	 * @param serverUrl URL сервера (UTF-16)
+	 * @param jsonBody JSON тело запроса (UTF-16)
+	 * @param useSendEvent Управлять отправкой события через EventManager
+	 * @param useQueueEvent Управлять добавлением события в очередь
+	 * @return Найденный ответ или сообщение об ошибке (UTF-16)
+	 */
+	__declspec(dllexport) const wchar_t* __stdcall GetHttpResponseEx(const wchar_t* serverUrl, const wchar_t* jsonBody, bool useSendEvent, bool useQueueEvent);
+
+
 	//-----------------------------------------------------------------------------
 	// Функции управления базой данных
 	//-----------------------------------------------------------------------------
@@ -75,6 +126,27 @@ extern "C" {
 	 * @return Количество найденных записей
 	 */
 	__declspec(dllexport) int __stdcall GetOldHttpItemsCount(int hoursOld, bool checkResponses);
+
+	/**
+	 * @brief Расширенная версия: Очищает старые записи из базы данных
+	 * @param hoursOld Возраст записей в часах
+	 * @param cleanResponses true - чистить таблицу ответов, false - только очередь
+	 * @param useSendEvent Управлять отправкой события через EventManager
+	 * @param useQueueEvent Управлять добавлением события в очередь
+	 * @return Количество удаленных записей
+	 */
+	__declspec(dllexport) int __stdcall CleanOldHttpItemsEx(int hoursOld, bool cleanResponses, bool useSendEvent, bool useQueueEvent);
+
+	/**
+	 * @brief Расширенная версия: Возвращает количество старых записей в базе данных
+	 * @param hoursOld Возраст записей в часах
+	 * @param checkResponses true - проверять таблицу ответов, false - только очередь
+	 * @param useSendEvent Управлять отправкой события через EventManager
+	 * @param useQueueEvent Управлять добавлением события в очередь
+	 * @return Количество найденных записей
+	 */
+	__declspec(dllexport) int __stdcall GetOldHttpItemsCountEx(int hoursOld, bool checkResponses, bool useSendEvent, bool useQueueEvent);
+
 
 	//-----------------------------------------------------------------------------
 	// Функции callback-событий
@@ -99,11 +171,11 @@ extern "C" {
 	//-----------------------------------------------------------------------------
 
 	/**
-	* @brief Возвращает количество событий, ожидающих обработки в очереди событий
-	* @return Количество событий в очереди
-	*/
+	 * @brief Возвращает количество событий, ожидающих обработки в очереди событий
+	 * @return Количество событий в очереди
+	 */
 	__declspec(dllexport) int __stdcall GetPendingEventCount();
-	
+
 	/**
 	 * @brief Извлекает следующее событие из очереди событий
 	 * @param eventType Буфер для записи типа события (UTF-16)

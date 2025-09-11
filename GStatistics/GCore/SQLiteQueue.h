@@ -55,12 +55,15 @@ private:
      */
     bool ExecuteSQL(const std::string& sql);
 
+    bool EnsureFolderExists(const std::string& path);
+
 public:
+    
     /**
      * @brief Конструктор класса SQLiteQueue
      * @param database_path Путь к файлу базы данных (по умолчанию: "http_queue.db")
      */
-    SQLiteQueue(const std::string& database_path = "http_queue.db");
+    SQLiteQueue(const std::string& database_path = "");
 
     /**
      * @brief Деструктор класса SQLiteQueue

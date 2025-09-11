@@ -20,13 +20,17 @@ SQLiteQueue g_queue;
 static std::vector<std::pair<std::wstring, std::wstring>> g_events;
 static CRITICAL_SECTION g_eventsCs;
 
+// -----------------------------------------------------------------------------
 // Инициализация критической секции
+// -----------------------------------------------------------------------------
 void InitializeEventsSystem()
 {
     InitializeCriticalSection(&g_eventsCs);
 }
 
-// Функция для добавления события в очередь
+// -----------------------------------------------------------------------------
+// Добавление события в очередь
+// -----------------------------------------------------------------------------
 void AddEventToQueue(const wchar_t* event_type, const wchar_t* data)
 {
     EnterCriticalSection(&g_eventsCs);
@@ -34,7 +38,20 @@ void AddEventToQueue(const wchar_t* event_type, const wchar_t* data)
     LeaveCriticalSection(&g_eventsCs);
 }
 
+// -----------------------------------------------------------------------------
+// Вспомогательная функция для управления событиями
+// -----------------------------------------------------------------------------
+inline void HandleEvent(const wchar_t* type, const wchar_t* data, bool useSendEvent, bool useQueueEvent)
+{
+    if (useSendEvent)
+        EventManager::SendEvent(type, data);
+    if (useQueueEvent)
+        AddEventToQueue(type, data);
+}
+
+// -----------------------------------------------------------------------------
 // Экспортируемые функции для работы с событиями
+// -----------------------------------------------------------------------------
 extern "C" __declspec(dllexport) int __stdcall GetPendingEventCount()
 {
     EnterCriticalSection(&g_eventsCs);
@@ -56,7 +73,6 @@ extern "C" __declspec(dllexport) int __stdcall GetNextEvent(wchar_t* eventType, 
     auto event = g_events.front();
     g_events.erase(g_events.begin());
 
-    // Копируем данные в буферы
     if (eventType && typeSize > 0)
         wcsncpy_s(eventType, typeSize, event.first.c_str(), _TRUNCATE);
 
@@ -75,13 +91,14 @@ extern "C" __declspec(dllexport) int __stdcall ClearEvents()
     return 1;
 }
 
-// Экспортируемая функция для установки callback
 extern "C" __declspec(dllexport) void __stdcall SetEventCallback(EventCallback callback)
 {
     EventManager::SetCallback(callback);
 }
 
-// Надёжное безопасное копирование из MQL4 string
+// -----------------------------------------------------------------------------
+// Внутренние безопасные функции
+// -----------------------------------------------------------------------------
 int SendRequestInternalSafe(const wchar_t* serverUrlPtr, const wchar_t* jsonBodyPtr)
 {
     if (!serverUrlPtr || !jsonBodyPtr) return 1;
@@ -112,18 +129,18 @@ std::wstring SendRequestInternalSafeResponse(const wchar_t* serverUrlPtr, const 
     return Utf8ToWide(responseUtf8.c_str());
 }
 
-// Функция для обработки очереди в фоновом потоке
+// -----------------------------------------------------------------------------
+// Поток обработки очереди
+// -----------------------------------------------------------------------------
 DWORD WINAPI ProcessQueueThread(LPVOID lpParam) {
-    EventManager::SendEvent(L"QUEUE_START", L"Начало обработки очереди");
-    AddEventToQueue(L"QUEUE_START", L"Начало обработки очереди");
+    HandleEvent(L"QUEUE_START", L"Начало обработки очереди", true, true);
 
     std::vector<QueueItem> items = g_queue.GetPendingItems(50);
     int processed = 0;
     int successful = 0;
 
     std::wstring statusMsg = L"Найдено " + std::to_wstring(items.size()) + L" записей";
-    EventManager::SendEvent(L"QUEUE_STATUS", statusMsg.c_str());
-    AddEventToQueue(L"QUEUE_STATUS", statusMsg.c_str());
+    HandleEvent(L"QUEUE_STATUS", statusMsg.c_str(), true, true);
 
     for (const auto& item : items) {
         processed++;
@@ -131,43 +148,33 @@ DWORD WINAPI ProcessQueueThread(LPVOID lpParam) {
             successful++;
             g_queue.RemoveFromQueue(item.id);
             std::wstring successMsg = L"Успешно отправлен запрос ID: " + std::to_wstring(item.id);
-            EventManager::SendEvent(L"REQUEST_SUCCESS", successMsg.c_str());
-            AddEventToQueue(L"REQUEST_SUCCESS", successMsg.c_str());
+            HandleEvent(L"REQUEST_SUCCESS", successMsg.c_str(), true, true);
         }
         else {
             std::wstring errorMsg = L"Ошибка отправки запроса ID: " + std::to_wstring(item.id);
-            EventManager::SendEvent(L"REQUEST_FAILED", errorMsg.c_str());
-            AddEventToQueue(L"REQUEST_FAILED", errorMsg.c_str());
+            HandleEvent(L"REQUEST_FAILED", errorMsg.c_str(), true, true);
         }
         Sleep(100);
     }
 
     std::wstring completeMsg = L"Обработка завершена. Успешно: " + std::to_wstring(successful) + L", Всего: " + std::to_wstring(processed);
-    EventManager::SendEvent(L"QUEUE_COMPLETE", completeMsg.c_str());
-    AddEventToQueue(L"QUEUE_COMPLETE", completeMsg.c_str());
+    HandleEvent(L"QUEUE_COMPLETE", completeMsg.c_str(), true, true);
 
     return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Экспортируемые функции с callback-событиями
+// Старые экспортируемые функции (оставлены без изменений)
 ///////////////////////////////////////////////////////////////////////////////
-
 extern "C" __declspec(dllexport) int __stdcall SendHttpRequest(const wchar_t* serverUrl, const wchar_t* jsonBody)
 {
-    EventManager::SendEvent(L"SEND_REQUEST_START", L"Начало отправки запроса");
-    AddEventToQueue(L"SEND_REQUEST_START", L"Начало отправки запроса");
-
+    HandleEvent(L"SEND_REQUEST_START", L"Начало отправки запроса", true, true);
     int result = SendRequestInternalSafe(serverUrl, jsonBody);
 
-    if (result == 0) {
-        EventManager::SendEvent(L"SEND_REQUEST_SUCCESS", L"Запрос успешно отправлен");
-        AddEventToQueue(L"SEND_REQUEST_SUCCESS", L"Запрос успешно отправлен");
-    }
-    else {
-        EventManager::SendEvent(L"SEND_REQUEST_FAILED", L"Ошибка отправки запроса");
-        AddEventToQueue(L"SEND_REQUEST_FAILED", L"Ошибка отправки запроса");
-    }
+    if (result == 0)
+        HandleEvent(L"SEND_REQUEST_SUCCESS", L"Запрос успешно отправлен", true, true);
+    else
+        HandleEvent(L"SEND_REQUEST_FAILED", L"Ошибка отправки запроса", true, true);
 
     return result;
 }
@@ -176,29 +183,21 @@ extern "C" __declspec(dllexport) const wchar_t* __stdcall SendHttpRequestRespons
 {
     static thread_local std::wstring responseBuffer;
 
-    EventManager::SendEvent(L"SEND_REQUEST_RESPONSE_START", L"Начало отправки запроса с ответом");
-    AddEventToQueue(L"SEND_REQUEST_RESPONSE_START", L"Начало отправки запроса с ответом");
-
+    HandleEvent(L"SEND_REQUEST_RESPONSE_START", L"Начало отправки запроса с ответом", true, true);
     responseBuffer = SendRequestInternalSafeResponse(serverUrl, jsonBody);
 
-    if (responseBuffer.find(L"ERROR:") == 0) {
-        EventManager::SendEvent(L"SEND_REQUEST_RESPONSE_FAILED", responseBuffer.c_str());
-        AddEventToQueue(L"SEND_REQUEST_RESPONSE_FAILED", responseBuffer.c_str());
-    }
-    else {
-        EventManager::SendEvent(L"SEND_REQUEST_RESPONSE_SUCCESS", L"Запрос с ответом успешно обработан");
-        AddEventToQueue(L"SEND_REQUEST_RESPONSE_SUCCESS", L"Запрос с ответом успешно обработан");
-    }
+    if (responseBuffer.find(L"ERROR:") == 0)
+        HandleEvent(L"SEND_REQUEST_RESPONSE_FAILED", responseBuffer.c_str(), true, true);
+    else
+        HandleEvent(L"SEND_REQUEST_RESPONSE_SUCCESS", L"Запрос с ответом успешно обработан", true, true);
 
     return responseBuffer.c_str();
 }
 
-extern "C" __declspec(dllexport) int __stdcall SendHttpRequestQueue(
-    const wchar_t* serverUrl, const wchar_t* jsonBody, bool expectResponse)
+extern "C" __declspec(dllexport) int __stdcall SendHttpRequestQueue(const wchar_t* serverUrl, const wchar_t* jsonBody, bool expectResponse)
 {
     if (!serverUrl || !jsonBody) {
-        EventManager::SendEvent(L"QUEUE_ADD_FAILED", L"Неверные параметры");
-        AddEventToQueue(L"QUEUE_ADD_FAILED", L"Неверные параметры");
+        HandleEvent(L"QUEUE_ADD_FAILED", L"Неверные параметры", true, true);
         return 1;
     }
 
@@ -215,12 +214,10 @@ extern "C" __declspec(dllexport) int __stdcall SendHttpRequestQueue(
         std::wstring message = expectResponse ?
             L"Запрос добавлен в очередь с ожиданием ответа" :
             L"Запрос добавлен в очередь без ожидания ответа";
-        EventManager::SendEvent(L"QUEUE_ADD_SUCCESS", message.c_str());
-        AddEventToQueue(L"QUEUE_ADD_SUCCESS", message.c_str());
+        HandleEvent(L"QUEUE_ADD_SUCCESS", message.c_str(), true, true);
     }
     else {
-        EventManager::SendEvent(L"QUEUE_ADD_FAILED", L"Ошибка добавления в очередь");
-        AddEventToQueue(L"QUEUE_ADD_FAILED", L"Ошибка добавления в очередь");
+        HandleEvent(L"QUEUE_ADD_FAILED", L"Ошибка добавления в очередь", true, true);
     }
 
     return result ? 0 : 1;
@@ -228,29 +225,25 @@ extern "C" __declspec(dllexport) int __stdcall SendHttpRequestQueue(
 
 extern "C" __declspec(dllexport) int __stdcall ProcessHttpQueue()
 {
-    EventManager::SendEvent(L"PROCESS_QUEUE_START", L"Запуск обработки очереди в фоновом режиме");
-    AddEventToQueue(L"PROCESS_QUEUE_START", L"Запуск обработки очереди в фоновом режиме");
+    HandleEvent(L"PROCESS_QUEUE_START", L"Запуск обработки очереди в фоновом режиме", true, true);
 
     HANDLE hThread = CreateThread(NULL, 0, ProcessQueueThread, NULL, 0, NULL);
     if (hThread) {
         CloseHandle(hThread);
-        EventManager::SendEvent(L"PROCESS_QUEUE_SUCCESS", L"Фоновый поток запущен успешно");
-        AddEventToQueue(L"PROCESS_QUEUE_SUCCESS", L"Фоновый поток запущен успешно");
+        HandleEvent(L"PROCESS_QUEUE_SUCCESS", L"Фоновый поток запущен успешно", true, true);
         return 0;
     }
     else {
-        EventManager::SendEvent(L"PROCESS_QUEUE_FAILED", L"Ошибка запуска фонового потока");
-        AddEventToQueue(L"PROCESS_QUEUE_FAILED", L"Ошибка запуска фонового потока");
+        HandleEvent(L"PROCESS_QUEUE_FAILED", L"Ошибка запуска фонового потока", true, true);
         return 1;
     }
 }
 
-extern "C" __declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(
-    const wchar_t* serverUrl, const wchar_t* jsonBody)
+extern "C" __declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(const wchar_t* serverUrl, const wchar_t* jsonBody)
 {
+
     if (!serverUrl || !jsonBody) {
-        EventManager::SendEvent(L"GET_RESPONSE_FAILED", L"Неверные параметры");
-        AddEventToQueue(L"GET_RESPONSE_FAILED", L"Неверные параметры");
+        HandleEvent(L"GET_RESPONSE_FAILED", L"Неверные параметры", true, true);
         return L"ERROR: Invalid parameters";
     }
 
@@ -263,18 +256,15 @@ extern "C" __declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(
     std::wstring jsonBodyW(jsonBody, jsonLen);
     std::string jsonBodyUtf8 = WideToUtf8(jsonBodyW.c_str());
 
-    // Получаем и удаляем ответ
     std::string response = g_queue.GetAndRemoveResponse(serverUrlW, jsonBodyUtf8);
 
     if (!response.empty()) {
         responseBuffer = Utf8ToWide(response.c_str());
-        EventManager::SendEvent(L"GET_RESPONSE_SUCCESS", L"Ответ успешно получен из базы");
-        AddEventToQueue(L"GET_RESPONSE_SUCCESS", L"Ответ успешно получен из базы");
+        HandleEvent(L"GET_RESPONSE_SUCCESS", L"Ответ успешно получен из базы", true, true);
     }
     else {
         responseBuffer = L"ERROR: No response found";
-        EventManager::SendEvent(L"GET_RESPONSE_NOT_FOUND", L"Ответ не найден в базе");
-        AddEventToQueue(L"GET_RESPONSE_NOT_FOUND", L"Ответ не найден в базе");
+        HandleEvent(L"GET_RESPONSE_NOT_FOUND", L"Ответ не найден в базе", true, true);
     }
 
     return responseBuffer.c_str();
@@ -283,14 +273,12 @@ extern "C" __declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(
 extern "C" __declspec(dllexport) int __stdcall CleanOldHttpItems(int hoursOld, bool cleanResponses)
 {
     std::wstring startMsg = L"Начало очистки записей старше " + std::to_wstring(hoursOld) + L" часов";
-    EventManager::SendEvent(L"CLEAN_START", startMsg.c_str());
-    AddEventToQueue(L"CLEAN_START", startMsg.c_str());
+    HandleEvent(L"CLEAN_START", startMsg.c_str(), true, true);
 
     int result = g_queue.CleanOldItems(hoursOld, cleanResponses);
 
     std::wstring completeMsg = L"Очистка завершена. Удалено записей: " + std::to_wstring(result);
-    EventManager::SendEvent(L"CLEAN_COMPLETE", completeMsg.c_str());
-    AddEventToQueue(L"CLEAN_COMPLETE", completeMsg.c_str());
+    HandleEvent(L"CLEAN_COMPLETE", completeMsg.c_str(), true, true);
 
     return result;
 }
@@ -302,26 +290,154 @@ extern "C" __declspec(dllexport) int __stdcall GetOldHttpItemsCount(int hoursOld
     std::wstring type = checkResponses ? L"ответов" : L"записей в очереди";
     std::wstring countMsg = L"Найдено " + std::to_wstring(result) + L" " + type + L" старше " + std::to_wstring(hoursOld) + L" часов";
 
-    EventManager::SendEvent(L"COUNT_RESULT", countMsg.c_str());
-    AddEventToQueue(L"COUNT_RESULT", countMsg.c_str());
+    HandleEvent(L"COUNT_RESULT", countMsg.c_str(), true, true);
 
     return result;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Новые экспортируемые функции с флагами управления событиями
+///////////////////////////////////////////////////////////////////////////////
+extern "C" __declspec(dllexport) int __stdcall SendHttpRequestEx(const wchar_t* serverUrl, const wchar_t* jsonBody, bool useSendEvent, bool useQueueEvent)
+{
+    HandleEvent(L"SEND_REQUEST_START", L"Начало отправки запроса", useSendEvent, useQueueEvent);
+    int result = SendRequestInternalSafe(serverUrl, jsonBody);
+
+    if (result == 0)
+        HandleEvent(L"SEND_REQUEST_SUCCESS", L"Запрос успешно отправлен", useSendEvent, useQueueEvent);
+    else
+        HandleEvent(L"SEND_REQUEST_FAILED", L"Ошибка отправки запроса", useSendEvent, useQueueEvent);
+
+    return result;
+}
+
+extern "C" __declspec(dllexport) const wchar_t* __stdcall SendHttpRequestResponseEx(const wchar_t* serverUrl, const wchar_t* jsonBody, bool useSendEvent, bool useQueueEvent)
+{
+    static thread_local std::wstring responseBuffer;
+
+    HandleEvent(L"SEND_REQUEST_RESPONSE_START", L"Начало отправки запроса с ответом", useSendEvent, useQueueEvent);
+    responseBuffer = SendRequestInternalSafeResponse(serverUrl, jsonBody);
+
+    if (responseBuffer.find(L"ERROR:") == 0)
+        HandleEvent(L"SEND_REQUEST_RESPONSE_FAILED", responseBuffer.c_str(), useSendEvent, useQueueEvent);
+    else
+        HandleEvent(L"SEND_REQUEST_RESPONSE_SUCCESS", L"Запрос с ответом успешно обработан", useSendEvent, useQueueEvent);
+
+    return responseBuffer.c_str();
+}
+
+extern "C" __declspec(dllexport) int __stdcall SendHttpRequestQueueEx(const wchar_t* serverUrl, const wchar_t* jsonBody, bool expectResponse, bool useSendEvent, bool useQueueEvent)
+{
+    if (!serverUrl || !jsonBody) {
+        HandleEvent(L"QUEUE_ADD_FAILED", L"Неверные параметры", useSendEvent, useQueueEvent);
+        return 1;
+    }
+
+    size_t urlLen = std::min(wcslen(serverUrl), size_t(2048));
+    size_t jsonLen = std::min(wcslen(jsonBody), size_t(8192));
+
+    std::wstring serverUrlW(serverUrl, urlLen);
+    std::wstring jsonBodyW(jsonBody, jsonLen);
+    std::string jsonBodyUtf8 = WideToUtf8(jsonBodyW.c_str());
+
+    bool result = g_queue.AddToQueue(serverUrlW, jsonBodyUtf8, expectResponse);
+
+    if (result) {
+        std::wstring message = expectResponse ?
+            L"Запрос добавлен в очередь с ожиданием ответа" :
+            L"Запрос добавлен в очередь без ожидания ответа";
+        HandleEvent(L"QUEUE_ADD_SUCCESS", message.c_str(), useSendEvent, useQueueEvent);
+    }
+    else {
+        HandleEvent(L"QUEUE_ADD_FAILED", L"Ошибка добавления в очередь", useSendEvent, useQueueEvent);
+    }
+
+    return result ? 0 : 1;
+}
+
+extern "C" __declspec(dllexport) int __stdcall ProcessHttpQueueEx(bool useSendEvent, bool useQueueEvent)
+{
+    HandleEvent(L"PROCESS_QUEUE_START", L"Запуск обработки очереди в фоновом режиме", useSendEvent, useQueueEvent);
+
+    HANDLE hThread = CreateThread(NULL, 0, ProcessQueueThread, NULL, 0, NULL);
+    if (hThread) {
+        CloseHandle(hThread);
+        HandleEvent(L"PROCESS_QUEUE_SUCCESS", L"Фоновый поток запущен успешно", useSendEvent, useQueueEvent);
+        return 0;
+    }
+    else {
+        HandleEvent(L"PROCESS_QUEUE_FAILED", L"Ошибка запуска фонового потока", useSendEvent, useQueueEvent);
+        return 1;
+    }
+}
+
+extern "C" __declspec(dllexport) const wchar_t* __stdcall GetHttpResponseEx(const wchar_t* serverUrl, const wchar_t* jsonBody, bool useSendEvent, bool useQueueEvent)
+{
+    if (!serverUrl || !jsonBody) {
+        HandleEvent(L"GET_RESPONSE_FAILED", L"Неверные параметры", useSendEvent, useQueueEvent);
+        return L"ERROR: Invalid parameters";
+    }
+
+    static thread_local std::wstring responseBuffer;
+
+    size_t urlLen = std::min(wcslen(serverUrl), size_t(2048));
+    size_t jsonLen = std::min(wcslen(jsonBody), size_t(8192));
+
+    std::wstring serverUrlW(serverUrl, urlLen);
+    std::wstring jsonBodyW(jsonBody, jsonLen);
+    std::string jsonBodyUtf8 = WideToUtf8(jsonBodyW.c_str());
+
+    std::string response = g_queue.GetAndRemoveResponse(serverUrlW, jsonBodyUtf8);
+
+    if (!response.empty()) {
+        responseBuffer = Utf8ToWide(response.c_str());
+        HandleEvent(L"GET_RESPONSE_SUCCESS", L"Ответ успешно получен из базы", useSendEvent, useQueueEvent);
+    }
+    else {
+        responseBuffer = L"ERROR: No response found";
+        HandleEvent(L"GET_RESPONSE_NOT_FOUND", L"Ответ не найден в базе", useSendEvent, useQueueEvent);
+    }
+
+    return responseBuffer.c_str();
+}
+
+extern "C" __declspec(dllexport) int __stdcall CleanOldHttpItemsEx(int hoursOld, bool cleanResponses, bool useSendEvent, bool useQueueEvent)
+{
+    std::wstring startMsg = L"Начало очистки записей старше " + std::to_wstring(hoursOld) + L" часов";
+    HandleEvent(L"CLEAN_START", startMsg.c_str(), useSendEvent, useQueueEvent);
+
+    int result = g_queue.CleanOldItems(hoursOld, cleanResponses);
+
+    std::wstring completeMsg = L"Очистка завершена. Удалено записей: " + std::to_wstring(result);
+    HandleEvent(L"CLEAN_COMPLETE", completeMsg.c_str(), useSendEvent, useQueueEvent);
+
+    return result;
+}
+
+extern "C" __declspec(dllexport) int __stdcall GetOldHttpItemsCountEx(int hoursOld, bool checkResponses, bool useSendEvent, bool useQueueEvent)
+{
+    int result = g_queue.GetOldItemsCount(hoursOld, checkResponses);
+
+    std::wstring type = checkResponses ? L"ответов" : L"записей в очереди";
+    std::wstring countMsg = L"Найдено " + std::to_wstring(result) + L" " + type + L" старше " + std::to_wstring(hoursOld) + L" часов";
+
+    HandleEvent(L"COUNT_RESULT", countMsg.c_str(), useSendEvent, useQueueEvent);
+
+    return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Точка входа DLL
+///////////////////////////////////////////////////////////////////////////////
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
         InitializeEventsSystem();
-        EventManager::SendEvent(L"DLL_LOADED", L"Библиотека GCore загружена");
-        AddEventToQueue(L"DLL_LOADED", L"Библиотека GCore загружена");
         break;
     case DLL_PROCESS_DETACH:
         DeleteCriticalSection(&g_eventsCs);
-        EventManager::SendEvent(L"DLL_UNLOADED", L"Библиотека GCore выгружена");
-        AddEventToQueue(L"DLL_UNLOADED", L"Библиотека GCore выгружена");
         break;
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:

@@ -3,8 +3,26 @@
 #include <ctime>
 #include <sstream>
 #include <iomanip>
+#include <cstdlib>
+#include <string>
+#include <direct.h>   // для _mkdir на Windows
 
-SQLiteQueue::SQLiteQueue(const std::string& database_path) : db(nullptr), db_path(database_path) {
+
+bool SQLiteQueue::EnsureFolderExists(const std::string& path) {
+    if (_mkdir(path.c_str()) == 0 || errno == EEXIST) return true;
+    return false;
+}
+
+SQLiteQueue::SQLiteQueue(const std::string& database_path) : db(nullptr) {
+    if (database_path.empty()) {
+        std::string folder = "c:\\gcore";
+        if (!folder.empty()) EnsureFolderExists(folder);
+        db_path = folder + "\\data.db";
+    }
+    else {
+        db_path = database_path;
+    }
+
     InitializeDatabase();
 }
 
