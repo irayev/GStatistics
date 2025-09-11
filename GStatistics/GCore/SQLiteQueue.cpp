@@ -23,11 +23,18 @@ SQLiteQueue::SQLiteQueue(const std::string& database_path) : db(nullptr) {
         db_path = database_path;
     }
 
-    InitializeDatabase();
+    if (!InitializeDatabase()) {
+        // Обработка ошибки инициализации
+        if (db) {
+            sqlite3_close(db);
+            db = nullptr;
+        }
+    }
 }
 
 SQLiteQueue::~SQLiteQueue() {
     if (db) {
+        // Отменяем все pending statements перед закрытием
         sqlite3_close(db);
         db = nullptr;
     }
@@ -70,11 +77,11 @@ bool SQLiteQueue::ExecuteSQL(const std::string& sql) {
     char* err_msg = nullptr;
     int result = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &err_msg);
 
-    if (result != SQLITE_OK) {
-        if (err_msg) {
-            sqlite3_free(err_msg);
-        }
-        return false;
+    bool success = (result == SQLITE_OK);
+
+    if (err_msg) {
+        sqlite3_free(err_msg);
+        err_msg = nullptr;
     }
 
     return true;
@@ -88,7 +95,7 @@ bool SQLiteQueue::AddToQueue(const std::wstring& server_url, const std::string& 
         VALUES (?, ?, ?, ?)
     )";
 
-    sqlite3_stmt* stmt;
+    sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
     }
@@ -102,6 +109,7 @@ bool SQLiteQueue::AddToQueue(const std::wstring& server_url, const std::string& 
 
     bool result = sqlite3_step(stmt) == SQLITE_DONE;
     sqlite3_finalize(stmt);
+    stmt = nullptr;
 
     return result;
 }
@@ -226,7 +234,7 @@ std::string SQLiteQueue::GetAndRemoveResponse(const std::wstring& server_url, co
         LIMIT 1
     )";
 
-    sqlite3_stmt* stmt;
+    sqlite3_stmt* stmt = nullptr;
     std::string response;
 
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
@@ -242,20 +250,23 @@ std::string SQLiteQueue::GetAndRemoveResponse(const std::wstring& server_url, co
             }
         }
         sqlite3_finalize(stmt);
+        stmt = nullptr;
     }
 
     // Если нашли ответ, удаляем ВСЕ записи с такими параметрами
     if (!response.empty()) {
         sql = "DELETE FROM http_responses WHERE server_url = ? AND request_body = ?";
+        sqlite3_stmt* delete_stmt = nullptr;
 
-        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &delete_stmt, nullptr) == SQLITE_OK) {
             std::string url_utf8 = WideToUtf8(server_url.c_str());
 
-            sqlite3_bind_text(stmt, 1, url_utf8.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, 2, request_body.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(delete_stmt, 1, url_utf8.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(delete_stmt, 2, request_body.c_str(), -1, SQLITE_TRANSIENT);
 
-            sqlite3_step(stmt);
-            sqlite3_finalize(stmt);
+            sqlite3_step(delete_stmt);
+            sqlite3_finalize(delete_stmt);
+            delete_stmt = nullptr;
         }
     }
 
@@ -280,14 +291,12 @@ bool SQLiteQueue::RemoveResponse(int id) {
 }
 
 int SQLiteQueue::CleanOldItems(int hours_old, bool clean_responses) {
-    if (!db) return 0;
-
     time_t cutoff_time = time(nullptr) - (hours_old * 3600);
 
     std::string sql_queue = "DELETE FROM http_queue WHERE timestamp < ?";
     std::string sql_responses = "DELETE FROM http_responses WHERE timestamp < ?";
 
-    sqlite3_stmt* stmt;
+    sqlite3_stmt* stmt = nullptr;
     int deleted_count = 0;
 
     // Очистка очереди
@@ -297,6 +306,7 @@ int SQLiteQueue::CleanOldItems(int hours_old, bool clean_responses) {
             deleted_count += sqlite3_changes(db);
         }
         sqlite3_finalize(stmt);
+        stmt = nullptr;
     }
 
     // Очистка ответов, если нужно
@@ -307,6 +317,7 @@ int SQLiteQueue::CleanOldItems(int hours_old, bool clean_responses) {
                 deleted_count += sqlite3_changes(db);
             }
             sqlite3_finalize(stmt);
+            stmt = nullptr;
         }
     }
 
@@ -326,7 +337,7 @@ int SQLiteQueue::GetOldItemsCount(int hours_old, bool check_responses) {
         sql = "SELECT COUNT(*) FROM http_queue WHERE timestamp < ?";
     }
 
-    sqlite3_stmt* stmt;
+    sqlite3_stmt* stmt = nullptr;
     int count = 0;
 
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
@@ -335,6 +346,7 @@ int SQLiteQueue::GetOldItemsCount(int hours_old, bool check_responses) {
             count = sqlite3_column_int(stmt, 0);
         }
         sqlite3_finalize(stmt);
+        stmt = nullptr;
     }
 
     return count;
