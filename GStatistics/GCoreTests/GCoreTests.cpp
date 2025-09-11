@@ -6,9 +6,10 @@
 #include <conio.h>
 #include <vector>
 #include <algorithm>
-#include "GStatistics.h"
+#include <map>
+#include "GCore.h"
 
-// Forward declarations (предварительные объявления)
+// Forward declarations
 void TestSendHttpRequest(const wchar_t* urlW);
 void TestSendHttpRequestResponse(const wchar_t* urlW);
 void TestSendHttpRequestQueue(const wchar_t* urlW, bool expectResponse);
@@ -19,8 +20,26 @@ void TestGetOldHttpItemsCount();
 void TestAllMethods(const wchar_t* urlW);
 void TestResponseWorkflow(const wchar_t* urlW);
 void TestDetailedResponseAnalysis(const wchar_t* urlW);
+void TestCallbackEvents();
 void PrintMenu();
 int ReadMenuOption();
+
+// Глобальные переменные для статистики событий
+std::map<std::wstring, int> eventStatistics;
+bool callbackRegistered = false;
+
+// Callback-функция для получения событий
+void __stdcall EventCallbackHandler(const wchar_t* event_type, const wchar_t* data)
+{
+    std::wstring eventStr(event_type);
+    std::wstring dataStr(data);
+
+    // Сохраняем статистику
+    eventStatistics[eventStr]++;
+
+    // Выводим событие
+    std::wcout << L"📢 CALLBACK: [" << eventStr << L"] " << dataStr << L"\n";
+}
 
 // Получаем текущее время
 std::wstring GetCurrentDateTimeW()
@@ -72,23 +91,32 @@ void AnalyzeResponse(const std::wstring& response, const std::wstring& functionN
     else {
         std::wcout << L"✅ Успешный ответ\n";
 
-        // Проверяем JSON-валидность (базовая проверка)
         if (response.find(L'{') != std::wstring::npos && response.find(L'}') != std::wstring::npos) {
             std::wcout << L"   Похоже на JSON ответ\n";
         }
 
-        // Проверяем длину ответа
         std::wcout << L"   Длина ответа: " << response.length() << L" символов\n";
 
-        // Проверяем наличие common fields
         if (response.find(L"success") != std::wstring::npos || response.find(L"result") != std::wstring::npos) {
             std::wcout << L"   Содержит поля результата\n";
         }
     }
 }
 
+// Регистрирует callback если еще не зарегистрирован
+void EnsureCallbackRegistered()
+{
+    if (!callbackRegistered) {
+        SetEventCallback(EventCallbackHandler);
+        callbackRegistered = true;
+        std::wcout << L"✅ Callback зарегистрирован\n";
+    }
+}
+
 void TestSendHttpRequest(const wchar_t* urlW)
 {
+    EnsureCallbackRegistered();
+
     std::wstring datetime = GetCurrentDateTimeW();
     std::wstring jsonBody = L"{\"DateTime\":\"" + datetime +
         L"\",\"AccountID\":\"1550256932\",\"BrokerName\":\"OnFin Ltd\",\"Message\":\"Тест обычной отправки\"}";
@@ -103,6 +131,8 @@ void TestSendHttpRequest(const wchar_t* urlW)
 
 void TestSendHttpRequestResponse(const wchar_t* urlW)
 {
+    EnsureCallbackRegistered();
+
     std::wstring datetime = GetCurrentDateTimeW();
     std::wstring jsonBody = L"{\"DateTime\":\"" + datetime +
         L"\",\"AccountID\":\"1550256932\",\"BrokerName\":\"OnFin Ltd\",\"Message\":\"Тест отправки с ответом\"}";
@@ -120,6 +150,8 @@ void TestSendHttpRequestResponse(const wchar_t* urlW)
 
 void TestSendHttpRequestQueue(const wchar_t* urlW, bool expectResponse)
 {
+    EnsureCallbackRegistered();
+
     std::wstring datetime = GetCurrentDateTimeW();
     std::wstring message = expectResponse ? L"Тест очереди с ответом" : L"Тест очереди без ответа";
     std::wstring jsonBody = L"{\"DateTime\":\"" + datetime +
@@ -136,6 +168,8 @@ void TestSendHttpRequestQueue(const wchar_t* urlW, bool expectResponse)
 
 void TestProcessHttpQueue()
 {
+    EnsureCallbackRegistered();
+
     std::wcout << L"\n--- Тест ProcessHttpQueue ---\n";
     int result = ProcessHttpQueue();
     std::wcout << L"Результат обработки очереди: " << (result == 0 ? L"✅ Успех" : L"❌ Ошибка") << L" (" << result << L")\n";
@@ -144,6 +178,8 @@ void TestProcessHttpQueue()
 
 void TestGetHttpResponse(const wchar_t* urlW)
 {
+    EnsureCallbackRegistered();
+
     std::wstring jsonBody = L"{\"DateTime\":\"2024-01-01 12:00:00\",\"AccountID\":\"1550256932\",\"BrokerName\":\"OnFin Ltd\",\"Message\":\"Тест получения ответа\"}";
 
     std::wcout << L"\n--- Тест GetHttpResponse ---\n";
@@ -159,19 +195,17 @@ void TestGetHttpResponse(const wchar_t* urlW)
 
 void TestCleanOldHttpItems()
 {
+    EnsureCallbackRegistered();
+
     std::wcout << L"\n--- Тест CleanOldHttpItems ---\n";
 
-    // Тестируем разные варианты
     std::vector<std::pair<int, bool>> testCases = {
-        {1, false},    // старше 1 часа, только очередь
-        {24, false},   // старше 24 часов, только очередь
-        {1, true},     // старше 1 часа, очередь и ответы
-        {24, true}     // старше 24 часов, очередь и ответы
+        {1, false}, {24, false}, {1, true}, {24, true}
     };
 
-    for (const auto& testCase : testCases) {
-        int hoursOld = testCase.first;
-        bool cleanResponses = testCase.second;
+    for (size_t i = 0; i < testCases.size(); ++i) {
+        int hoursOld = testCases[i].first;
+        bool cleanResponses = testCases[i].second;
 
         int result = CleanOldHttpItems(hoursOld, cleanResponses);
         std::wcout << L"Удалено записей старше " << hoursOld << L" часов ("
@@ -181,28 +215,31 @@ void TestCleanOldHttpItems()
 
 void TestGetOldHttpItemsCount()
 {
+    EnsureCallbackRegistered();
+
     std::wcout << L"\n--- Тест GetOldHttpItemsCount ---\n";
 
-    std::vector<int> hoursToTest = { 1, 6, 12, 24, 48, 168 }; // 1 час, 6 часов, 12 часов, 1 день, 2 дня, 1 неделя
+    std::vector<int> hoursToTest = { 1, 6, 12, 24, 48, 168 };
 
     std::wcout << L"Записей в очереди:\n";
-    for (int hours : hoursToTest) {
-        int count = GetOldHttpItemsCount(hours, false);
-        std::wcout << L"  старше " << hours << L" часов: " << count << L"\n";
+    for (size_t i = 0; i < hoursToTest.size(); ++i) {
+        int count = GetOldHttpItemsCount(hoursToTest[i], false);
+        std::wcout << L"  старше " << hoursToTest[i] << L" часов: " << count << L"\n";
     }
 
     std::wcout << L"Ответов в базе:\n";
-    for (int hours : hoursToTest) {
-        int count = GetOldHttpItemsCount(hours, true);
-        std::wcout << L"  старше " << hours << L" часов: " << count << L"\n";
+    for (size_t i = 0; i < hoursToTest.size(); ++i) {
+        int count = GetOldHttpItemsCount(hoursToTest[i], true);
+        std::wcout << L"  старше " << hoursToTest[i] << L" часов: " << count << L"\n";
     }
 }
 
 void TestResponseWorkflow(const wchar_t* urlW)
 {
+    EnsureCallbackRegistered();
+
     std::wcout << L"\n=== Тест workflow с ответами ===\n";
 
-    // 1. Добавляем в очередь с ожиданием ответа
     std::wstring datetime = GetCurrentDateTimeW();
     std::wstring jsonBody = L"{\"DateTime\":\"" + datetime +
         L"\",\"AccountID\":\"1550256932\",\"BrokerName\":\"OnFin Ltd\",\"Message\":\"Тест workflow ответа\"}";
@@ -211,16 +248,13 @@ void TestResponseWorkflow(const wchar_t* urlW)
     int addResult = SendHttpRequestQueue(urlW, jsonBody.c_str(), true);
     std::wcout << L"   Результат: " << (addResult == 0 ? L"✅ Успех" : L"❌ Ошибка") << L"\n";
 
-    // 2. Обрабатываем очередь
     std::wcout << L"2. Обрабатываем очередь...\n";
     int processResult = ProcessHttpQueue();
     std::wcout << L"   Результат: " << (processResult == 0 ? L"✅ Успех" : L"❌ Ошибка") << L"\n";
 
-    // 3. Ждем немного для обработки
     std::wcout << L"3. Ожидание обработки (3 секунды)...\n";
     Sleep(3000);
 
-    // 4. Пытаемся получить ответ
     std::wcout << L"4. Пытаемся получить ответ...\n";
     const wchar_t* response = GetHttpResponse(urlW, jsonBody.c_str());
     std::wstring responseStr(response);
@@ -231,15 +265,14 @@ void TestResponseWorkflow(const wchar_t* urlW)
 
 void TestDetailedResponseAnalysis(const wchar_t* urlW)
 {
+    EnsureCallbackRegistered();
+
     std::wcout << L"\n=== Детальный анализ ответов ===\n";
 
-    // Тестируем разные типы запросов
     std::wstring testMessages[] = {
-        L"Простой тест",
-        L"Тест с кириллицей: привет мир",
-        L"Тест с спецсимволами: !@#$%^&*()",
-        L"Тест с числами: 1234567890",
-        L"Тест с JSON: {\"key\": \"value\", \"array\": [1,2,3]}"
+        L"Простой тест", L"Тест с кириллицей: привет мир",
+        L"Тест с спецсимволами: !@#$%^&*()", L"Тест с числами: 1234567890",
+        L"Тест с JSON данными"
     };
 
     for (size_t i = 0; i < sizeof(testMessages) / sizeof(testMessages[0]); ++i) {
@@ -251,42 +284,67 @@ void TestDetailedResponseAnalysis(const wchar_t* urlW)
 
         std::wcout << L"Сообщение: " << testMessages[i] << L"\n";
 
-        // Тестируем прямую отправку
         const wchar_t* response = SendHttpRequestResponse(urlW, jsonBody.c_str());
         std::wstring responseStr(response);
 
         AnalyzeResponse(responseStr, L"DetailedTest_" + std::to_wstring(i + 1));
+        Sleep(1000);
+    }
+}
 
-        Sleep(1000); // Пауза между запросами
+void TestCallbackEvents()
+{
+    EnsureCallbackRegistered();
+
+    std::wcout << L"\n=== Тест callback-событий ===\n";
+    std::wcout << L"Отправляем тестовые события...\n";
+
+    // Тестируем разные типы событий
+    SendHttpRequest(L"http://test.com", L"{\"test\":\"callback\"}");
+    Sleep(500);
+
+    SendHttpRequestQueue(L"http://test.com", L"{\"test\":\"queue\"}", true);
+    Sleep(500);
+
+    ProcessHttpQueue();
+    Sleep(500);
+
+    CleanOldHttpItems(24, true);
+    Sleep(500);
+
+    std::wcout << L"\n📊 Статистика полученных событий:\n";
+    for (std::map<std::wstring, int>::iterator it = eventStatistics.begin(); it != eventStatistics.end(); ++it) {
+        std::wcout << L"  " << it->first << L": " << it->second << L" событий\n";
+    }
+
+    if (eventStatistics.empty()) {
+        std::wcout << L"❌ События не получены. Проверьте регистрацию callback\n";
+    }
+    else {
+        std::wcout << L"✅ Callback работает корректно\n";
     }
 }
 
 void TestAllMethods(const wchar_t* urlW)
 {
+    EnsureCallbackRegistered();
+
     std::wcout << L"\n=== Тестирование всех методов ===\n";
 
-    // Простой подход - вызываем методы напрямую
     TestSendHttpRequest(urlW);
     Sleep(1000);
-
     TestSendHttpRequestResponse(urlW);
     Sleep(1000);
-
     TestSendHttpRequestQueue(urlW, false);
     Sleep(1000);
-
     TestSendHttpRequestQueue(urlW, true);
     Sleep(1000);
-
     TestProcessHttpQueue();
-    Sleep(1000);
-
+    Sleep(2000);
     TestGetHttpResponse(urlW);
     Sleep(1000);
-
     TestCleanOldHttpItems();
     Sleep(1000);
-
     TestGetOldHttpItemsCount();
 
     std::wcout << L"\n=== Все тесты завершены ===\n";
@@ -296,18 +354,19 @@ void PrintMenu()
 {
     std::wcout << L"\n=== Тестер GCore DLL ===\n";
     std::wcout << L"1. SendHttpRequest - обычная отправка\n";
-    std::wcout << L"2. SendHttpRequestResponse - отправка с получением ответа\n";
+    std::wcout << L"2. SendHttpRequestResponse - отправка с ответом\n";
     std::wcout << L"3. SendHttpRequestQueue - добавление в очередь\n";
     std::wcout << L"4. ProcessHttpQueue - обработка очереди\n";
     std::wcout << L"5. GetHttpResponse - получение ответа из базы\n";
     std::wcout << L"6. CleanOldHttpItems - очистка старых записей\n";
     std::wcout << L"7. GetOldHttpItemsCount - количество старых записей\n";
-    std::wcout << L"8. Тест всех методов последовательно\n";
+    std::wcout << L"8. Тест всех методов\n";
     std::wcout << L"9. Тест workflow с ответами\n";
-    std::wcout << L"10. Тест с разными возрастами записей\n";
-    std::wcout << L"11. Детальный анализ ответов\n";
+    std::wcout << L"10. Детальный анализ ответов\n";
+    std::wcout << L"11. Тест callback-событий\n";
+    std::wcout << L"12. Показать статистику событий\n";
     std::wcout << L"0. Выход\n";
-    std::wcout << L"Выберите опцию (0-11): ";
+    std::wcout << L"Выберите опцию (0-12): ";
 }
 
 int ReadMenuOption()
@@ -318,14 +377,10 @@ int ReadMenuOption()
     while (true) {
         ch = _getch();
 
-        if (ch == 27) { // ESC
-            return -1;
-        }
-        else if (ch == 13) { // Enter - завершаем ввод
+        if (ch == 27) return -1; // ESC
+        else if (ch == 13) { // Enter
             if (!input.empty()) {
-                try {
-                    return std::stoi(input);
-                }
+                try { return std::stoi(input); }
                 catch (...) {
                     std::wcout << L"\n❌ Неверный ввод. Попробуйте снова: ";
                     input.clear();
@@ -336,10 +391,10 @@ int ReadMenuOption()
         else if (ch == 8) { // Backspace
             if (!input.empty()) {
                 input.pop_back();
-                std::wcout << L"\b \b"; // Стираем символ из консоли
+                std::wcout << L"\b \b";
             }
         }
-        else if (ch >= L'0' && ch <= L'9') { // Цифры
+        else if (ch >= L'0' && ch <= L'9') {
             input += ch;
             std::wcout << ch;
         }
@@ -348,7 +403,6 @@ int ReadMenuOption()
 
 int wmain(int argc, wchar_t* argv[])
 {
-    // Настраиваем консоль на Unicode
     _setmode(_fileno(stdout), _O_U16TEXT);
     _setmode(_fileno(stdin), _O_U16TEXT);
 
@@ -360,56 +414,43 @@ int wmain(int argc, wchar_t* argv[])
 
     const wchar_t* urlW = argv[1];
 
-    while (true)
-    {
-        PrintMenu();
+    // Регистрируем callback сразу
+    SetEventCallback(EventCallbackHandler);
+    callbackRegistered = true;
+    std::wcout << L"✅ Callback зарегистрирован\n";
 
+    while (true) {
+        PrintMenu();
         int option = ReadMenuOption();
 
-        if (option == -1 || option == 0) break; // ESC или 0 - выход
+        if (option == -1 || option == 0) break;
 
-        switch (option)
-        {
-        case 1:
-            TestSendHttpRequest(urlW);
+        switch (option) {
+        case 1: TestSendHttpRequest(urlW); break;
+        case 2: TestSendHttpRequestResponse(urlW); break;
+        case 3: TestSendHttpRequestQueue(urlW, false); break;
+        case 4: TestSendHttpRequestQueue(urlW, true); break;
+        case 5: TestProcessHttpQueue(); break;
+        case 6: TestGetHttpResponse(urlW); break;
+        case 7: TestCleanOldHttpItems(); break;
+        case 8: TestGetOldHttpItemsCount(); break;
+        case 9: TestAllMethods(urlW); break;
+        case 10: TestResponseWorkflow(urlW); break;
+        case 11: TestDetailedResponseAnalysis(urlW); break;
+        case 12:
+            std::wcout << L"\n📊 Статистика событий:\n";
+            for (std::map<std::wstring, int>::iterator it = eventStatistics.begin(); it != eventStatistics.end(); ++it) {
+                std::wcout << L"  " << it->first << L": " << it->second << L" событий\n";
+            }
+            if (eventStatistics.empty()) {
+                std::wcout << L"  Нет событий\n";
+            }
             break;
-        case 2:
-            TestSendHttpRequestResponse(urlW);
-            break;
-        case 3:
-            TestSendHttpRequestQueue(urlW, false);
-            break;
-        case 4:
-            TestSendHttpRequestQueue(urlW, true);
-            break;
-        case 5:
-            TestProcessHttpQueue();
-            break;
-        case 6:
-            TestGetHttpResponse(urlW);
-            break;
-        case 7:
-            TestCleanOldHttpItems();
-            break;
-        case 8:
-            TestGetOldHttpItemsCount();
-            break;
-        case 9:
-            TestAllMethods(urlW);
-            break;
-        case 10:
-            TestResponseWorkflow(urlW);
-            break;
-        case 11:
-            TestDetailedResponseAnalysis(urlW);
-            break;
-        default:
-            std::wcout << L"\n❌ Неизвестная опция. Выберите 0-11\n";
-            break;
+        default: std::wcout << L"\n❌ Неизвестная опция\n"; break;
         }
 
         std::wcout << L"\nНажмите Enter для продолжения...";
-        while (_getch() != 13); // Ждем Enter
+        while (_getch() != 13);
     }
 
     return 0;

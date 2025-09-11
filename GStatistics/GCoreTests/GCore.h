@@ -1,9 +1,5 @@
-// GCore.h - отдельный файл
-#pragma once
 #ifndef GCORE_H
 #define GCORE_H
-
-#include <windows.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,7 +15,7 @@ extern "C" {
 	 * @param jsonBody JSON тело запроса (UTF-16)
 	 * @return 0 при успехе, 1 при ошибке
 	 */
-	__declspec(dllexport) int __stdcall SendHttpRequest(const wchar_t* serverUrl, const wchar_t* jsonBody);
+	__declspec(dllimport) int __stdcall SendHttpRequest(const wchar_t* serverUrl, const wchar_t* jsonBody);
 
 	/**
 	 * @brief Отправляет HTTP POST запрос и возвращает ответ сервера
@@ -27,7 +23,7 @@ extern "C" {
 	 * @param jsonBody JSON тело запроса (UTF-16)
 	 * @return Ответ сервера в виде строки (UTF-16) или сообщение об ошибке
 	 */
-	__declspec(dllexport) const wchar_t* __stdcall SendHttpRequestResponse(const wchar_t* serverUrl, const wchar_t* jsonBody);
+	__declspec(dllimport) const wchar_t* __stdcall SendHttpRequestResponse(const wchar_t* serverUrl, const wchar_t* jsonBody);
 
 	//-----------------------------------------------------------------------------
 	// Функции работы с очередью запросов
@@ -40,13 +36,13 @@ extern "C" {
 	 * @param expectResponse Флаг ожидания ответа от сервера (true - ждем ответ)
 	 * @return 0 при успешном добавлении в очередь, 1 при ошибке
 	 */
-	__declspec(dllexport) int __stdcall SendHttpRequestQueue(const wchar_t* serverUrl, const wchar_t* jsonBody, bool expectResponse);
+	__declspec(dllimport) int __stdcall SendHttpRequestQueue(const wchar_t* serverUrl, const wchar_t* jsonBody, bool expectResponse);
 
 	/**
 	 * @brief Запускает фоновую обработку очереди запросов
 	 * @return 0 при успешном запуске потока, 1 при ошибке
 	 */
-	__declspec(dllexport) int __stdcall ProcessHttpQueue();
+	__declspec(dllimport) int __stdcall ProcessHttpQueue();
 
 	/**
 	 * @brief Получает ответ из базы данных и удаляет соответствующие записи
@@ -54,7 +50,7 @@ extern "C" {
 	 * @param jsonBody JSON тело запроса для поиска (UTF-16)
 	 * @return Найденный ответ или сообщение об ошибке (UTF-16)
 	 */
-	__declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(const wchar_t* serverUrl, const wchar_t* jsonBody);
+	__declspec(dllimport) const wchar_t* __stdcall GetHttpResponse(const wchar_t* serverUrl, const wchar_t* jsonBody);
 
 	//-----------------------------------------------------------------------------
 	// Функции управления базой данных
@@ -66,7 +62,7 @@ extern "C" {
 	 * @param cleanResponses Флаг очистки таблицы ответов (true) или только очереди (false)
 	 * @return Количество удаленных записей
 	 */
-	__declspec(dllexport) int __stdcall CleanOldHttpItems(int hoursOld, bool cleanResponses);
+	__declspec(dllimport) int __stdcall CleanOldHttpItems(int hoursOld, bool cleanResponses);
 
 	/**
 	 * @brief Возвращает количество старых записей в базе данных
@@ -74,7 +70,7 @@ extern "C" {
 	 * @param checkResponses Флаг проверки таблицы ответов (true) или только очереди (false)
 	 * @return Количество найденных записей
 	 */
-	__declspec(dllexport) int __stdcall GetOldHttpItemsCount(int hoursOld, bool checkResponses);
+	__declspec(dllimport) int __stdcall GetOldHttpItemsCount(int hoursOld, bool checkResponses);
 
 	//-----------------------------------------------------------------------------
 	// Функции callback-событий
@@ -91,13 +87,7 @@ extern "C" {
 	 * @brief Устанавливает callback-функцию для получения событий от DLL
 	 * @param callback Указатель на callback-функцию
 	 */
-	__declspec(dllexport) void __stdcall SetEventCallback(EventCallback callback);
-
-
-	//--- Функции для работы с событиями ---
-	__declspec(dllexport) int __stdcall GetPendingEventCount();
-	__declspec(dllexport) int __stdcall GetNextEvent(wchar_t* eventType, int typeSize, wchar_t* eventData, int dataSize);
-	__declspec(dllexport) int __stdcall ClearEvents();
+	__declspec(dllimport) void __stdcall SetEventCallback(EventCallback callback);
 
 #ifdef __cplusplus
 }
