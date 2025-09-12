@@ -133,14 +133,14 @@ std::wstring SendRequestInternalSafeResponse(const wchar_t* serverUrlPtr, const 
 // Поток обработки очереди
 // -----------------------------------------------------------------------------
 DWORD WINAPI ProcessQueueThread(LPVOID lpParam) {
-    HandleEvent(L"QUEUE_START", L"Начало обработки очереди", true, true);
+    HandleEvent(L"QUEUE_START", L"Начало обработки очереди", false, false);
 
     std::vector<QueueItem> items = g_queue.GetPendingItems(50);
     int processed = 0;
     int successful = 0;
 
     std::wstring statusMsg = L"Найдено " + std::to_wstring(items.size()) + L" записей";
-    HandleEvent(L"QUEUE_STATUS", statusMsg.c_str(), true, true);
+    HandleEvent(L"QUEUE_STATUS", statusMsg.c_str(), false, false);
 
     for (const auto& item : items) {
         processed++;
@@ -148,17 +148,17 @@ DWORD WINAPI ProcessQueueThread(LPVOID lpParam) {
             successful++;
             g_queue.RemoveFromQueue(item.id);
             std::wstring successMsg = L"Успешно отправлен запрос ID: " + std::to_wstring(item.id);
-            HandleEvent(L"REQUEST_SUCCESS", successMsg.c_str(), true, true);
+            HandleEvent(L"REQUEST_SUCCESS", successMsg.c_str(), false, false);
         }
         else {
             std::wstring errorMsg = L"Ошибка отправки запроса ID: " + std::to_wstring(item.id);
-            HandleEvent(L"REQUEST_FAILED", errorMsg.c_str(), true, true);
+            HandleEvent(L"REQUEST_FAILED", errorMsg.c_str(), false, false);
         }
         Sleep(100);
     }
 
     std::wstring completeMsg = L"Обработка завершена. Успешно: " + std::to_wstring(successful) + L", Всего: " + std::to_wstring(processed);
-    HandleEvent(L"QUEUE_COMPLETE", completeMsg.c_str(), true, true);
+    HandleEvent(L"QUEUE_COMPLETE", completeMsg.c_str(), false, false);
 
     return 0;
 }
@@ -168,13 +168,13 @@ DWORD WINAPI ProcessQueueThread(LPVOID lpParam) {
 ///////////////////////////////////////////////////////////////////////////////
 extern "C" __declspec(dllexport) int __stdcall SendHttpRequest(const wchar_t* serverUrl, const wchar_t* jsonBody)
 {
-    HandleEvent(L"SEND_REQUEST_START", L"Начало отправки запроса", true, true);
+    HandleEvent(L"SEND_REQUEST_START", L"Начало отправки запроса", false, false);
     int result = SendRequestInternalSafe(serverUrl, jsonBody);
 
     if (result == 0)
-        HandleEvent(L"SEND_REQUEST_SUCCESS", L"Запрос успешно отправлен", true, true);
+        HandleEvent(L"SEND_REQUEST_SUCCESS", L"Запрос успешно отправлен", false, false);
     else
-        HandleEvent(L"SEND_REQUEST_FAILED", L"Ошибка отправки запроса", true, true);
+        HandleEvent(L"SEND_REQUEST_FAILED", L"Ошибка отправки запроса", false, false);
 
     return result;
 }
@@ -183,13 +183,13 @@ extern "C" __declspec(dllexport) const wchar_t* __stdcall SendHttpRequestRespons
 {
     static thread_local std::wstring responseBuffer;
 
-    HandleEvent(L"SEND_REQUEST_RESPONSE_START", L"Начало отправки запроса с ответом", true, true);
+    HandleEvent(L"SEND_REQUEST_RESPONSE_START", L"Начало отправки запроса с ответом", false, false);
     responseBuffer = SendRequestInternalSafeResponse(serverUrl, jsonBody);
 
     if (responseBuffer.find(L"ERROR:") == 0)
-        HandleEvent(L"SEND_REQUEST_RESPONSE_FAILED", responseBuffer.c_str(), true, true);
+        HandleEvent(L"SEND_REQUEST_RESPONSE_FAILED", responseBuffer.c_str(), false, false);
     else
-        HandleEvent(L"SEND_REQUEST_RESPONSE_SUCCESS", L"Запрос с ответом успешно обработан", true, true);
+        HandleEvent(L"SEND_REQUEST_RESPONSE_SUCCESS", L"Запрос с ответом успешно обработан", false, false);
 
     return responseBuffer.c_str();
 }
@@ -197,7 +197,7 @@ extern "C" __declspec(dllexport) const wchar_t* __stdcall SendHttpRequestRespons
 extern "C" __declspec(dllexport) int __stdcall SendHttpRequestQueue(const wchar_t* serverUrl, const wchar_t* jsonBody, bool expectResponse)
 {
     if (!serverUrl || !jsonBody) {
-        HandleEvent(L"QUEUE_ADD_FAILED", L"Неверные параметры", true, true);
+        HandleEvent(L"QUEUE_ADD_FAILED", L"Неверные параметры", false, false);
         return 1;
     }
 
@@ -214,10 +214,10 @@ extern "C" __declspec(dllexport) int __stdcall SendHttpRequestQueue(const wchar_
         std::wstring message = expectResponse ?
             L"Запрос добавлен в очередь с ожиданием ответа" :
             L"Запрос добавлен в очередь без ожидания ответа";
-        HandleEvent(L"QUEUE_ADD_SUCCESS", message.c_str(), true, true);
+        HandleEvent(L"QUEUE_ADD_SUCCESS", message.c_str(), false, false);
     }
     else {
-        HandleEvent(L"QUEUE_ADD_FAILED", L"Ошибка добавления в очередь", true, true);
+        HandleEvent(L"QUEUE_ADD_FAILED", L"Ошибка добавления в очередь", false, false);
     }
 
     return result ? 0 : 1;
@@ -225,16 +225,16 @@ extern "C" __declspec(dllexport) int __stdcall SendHttpRequestQueue(const wchar_
 
 extern "C" __declspec(dllexport) int __stdcall ProcessHttpQueue()
 {
-    HandleEvent(L"PROCESS_QUEUE_START", L"Запуск обработки очереди в фоновом режиме", true, true);
+    HandleEvent(L"PROCESS_QUEUE_START", L"Запуск обработки очереди в фоновом режиме", false, false);
 
     HANDLE hThread = CreateThread(NULL, 0, ProcessQueueThread, NULL, 0, NULL);
     if (hThread) {
         CloseHandle(hThread);
-        HandleEvent(L"PROCESS_QUEUE_SUCCESS", L"Фоновый поток запущен успешно", true, true);
+        HandleEvent(L"PROCESS_QUEUE_SUCCESS", L"Фоновый поток запущен успешно", false, false);
         return 0;
     }
     else {
-        HandleEvent(L"PROCESS_QUEUE_FAILED", L"Ошибка запуска фонового потока", true, true);
+        HandleEvent(L"PROCESS_QUEUE_FAILED", L"Ошибка запуска фонового потока", false, false);
         return 1;
     }
 }
@@ -243,7 +243,7 @@ extern "C" __declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(const 
 {
 
     if (!serverUrl || !jsonBody) {
-        HandleEvent(L"GET_RESPONSE_FAILED", L"Неверные параметры", true, true);
+        HandleEvent(L"GET_RESPONSE_FAILED", L"Неверные параметры", false, false);
         return L"ERROR: Invalid parameters";
     }
 
@@ -260,11 +260,11 @@ extern "C" __declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(const 
 
     if (!response.empty()) {
         responseBuffer = Utf8ToWide(response.c_str());
-        HandleEvent(L"GET_RESPONSE_SUCCESS", L"Ответ успешно получен из базы", true, true);
+        HandleEvent(L"GET_RESPONSE_SUCCESS", L"Ответ успешно получен из базы", false, false);
     }
     else {
         responseBuffer = L"ERROR: No response found";
-        HandleEvent(L"GET_RESPONSE_NOT_FOUND", L"Ответ не найден в базе", true, true);
+        HandleEvent(L"GET_RESPONSE_NOT_FOUND", L"Ответ не найден в базе", false, false);
     }
 
     return responseBuffer.c_str();
@@ -273,12 +273,12 @@ extern "C" __declspec(dllexport) const wchar_t* __stdcall GetHttpResponse(const 
 extern "C" __declspec(dllexport) int __stdcall CleanOldHttpItems(int hoursOld, bool cleanResponses)
 {
     std::wstring startMsg = L"Начало очистки записей старше " + std::to_wstring(hoursOld) + L" часов";
-    HandleEvent(L"CLEAN_START", startMsg.c_str(), true, true);
+    HandleEvent(L"CLEAN_START", startMsg.c_str(), false, false);
 
     int result = g_queue.CleanOldItems(hoursOld, cleanResponses);
 
     std::wstring completeMsg = L"Очистка завершена. Удалено записей: " + std::to_wstring(result);
-    HandleEvent(L"CLEAN_COMPLETE", completeMsg.c_str(), true, true);
+    HandleEvent(L"CLEAN_COMPLETE", completeMsg.c_str(), false, false);
 
     return result;
 }
@@ -290,7 +290,7 @@ extern "C" __declspec(dllexport) int __stdcall GetOldHttpItemsCount(int hoursOld
     std::wstring type = checkResponses ? L"ответов" : L"записей в очереди";
     std::wstring countMsg = L"Найдено " + std::to_wstring(result) + L" " + type + L" старше " + std::to_wstring(hoursOld) + L" часов";
 
-    HandleEvent(L"COUNT_RESULT", countMsg.c_str(), true, true);
+    HandleEvent(L"COUNT_RESULT", countMsg.c_str(), false, false);
 
     return result;
 }
